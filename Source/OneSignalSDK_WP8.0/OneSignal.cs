@@ -10,11 +10,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO.IsolatedStorage;
 using System.Net;
+using System.Text;
 using System.Windows;
 using System.Xml.Linq;
 
 using Newtonsoft.Json.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Windows.ApplicationModel;
 
 namespace OneSignalSDK_WP80 {
 
@@ -41,7 +44,7 @@ namespace OneSignalSDK_WP80 {
 
         private static IDisposable fallBackOneSignalSession;
 
-        private static bool sessionCallInProgress, sessionCallDone;
+        private static bool sessionCallInProgress, sessionCallDone, subscriptionChangeInProgress;
 
         public static void Init(string appId, NotificationReceived inNotificationDelegate = null) {
             if (initDone)
@@ -152,6 +155,47 @@ namespace OneSignalSDK_WP80 {
             }
 
             SendSession(currentChannelUri);
+        }
+
+        private static void SetSubscription(bool status)
+        {
+            if (mPlayerId == null || mAppId == null || subscriptionChangeInProgress)
+            {
+                return;
+            }
+
+            subscriptionChangeInProgress = true;
+
+            string adId;
+            var type = Type.GetType("Windows.System.UserProfile.AdvertisingManager, Windows, Version=255.255.255.255, Culture=neutral, PublicKeyToken=null, ContentType=WindowsRuntime");
+            if (type != null)  // WP8.1 devices
+                adId = (string)type.GetProperty("AdvertisingId").GetValue(null, null);
+            else // WP8.0 devices, requires ID_CAP_IDENTITY_DEVICE
+                adId = Convert.ToBase64String((byte[])DeviceExtendedProperties.GetValue("DeviceUniqueId"));
+
+            JObject jsonObject = JObject.FromObject(new
+            {
+                device_type = 3,
+                app_id = mAppId,
+                identifier = mChannelUri ?? string.Empty,
+                ad_id = adId,
+                device_model = DeviceStatus.DeviceName,
+                device_os = Environment.OSVersion.Version.ToString(),
+                game_version = XDocument.Load("WMAppManifest.xml").Root.Element("App").Attribute("Version").Value,
+                notification_types = status ? "1" : "-2",
+                language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.ToString(),
+                timezone = TimeZoneInfo.Local.BaseUtcOffset.TotalSeconds.ToString(),
+                sdk = VERSION
+            });
+
+            string urlString = "players/" + mPlayerId;
+
+            var cli = GetWebClient();
+            cli.UploadStringCompleted += (senderObj, eventArgs) => {
+                subscriptionChangeInProgress = false;
+            };
+
+           cli.UploadStringAsync(new Uri(urlString), jsonObject.ToString());
         }
 
         private static void SendSession(string currentChannelUri) {
@@ -377,6 +421,16 @@ namespace OneSignalSDK_WP80 {
             tagsReceivedDelegate = inTagsReceivedDelegate;
 
             SendGetTagsMessage();
+        }
+
+        public static void UnsubscribeFromNotifications()
+        {
+            SetSubscription(false);
+        }
+
+        public static void SubscribeToNotifications()
+        {
+            SetSubscription(true);
         }
 
         private static void SendGetTagsMessage() {
