@@ -157,7 +157,7 @@ namespace OneSignalSDK_WP80 {
             SendSession(currentChannelUri);
         }
 
-        private static void SetSubscription(bool status)
+        public static void SetSubscription(bool status)
         {
             if (mPlayerId == null || mAppId == null || subscriptionChangeInProgress)
             {
@@ -166,36 +166,17 @@ namespace OneSignalSDK_WP80 {
 
             subscriptionChangeInProgress = true;
 
-            string adId;
-            var type = Type.GetType("Windows.System.UserProfile.AdvertisingManager, Windows, Version=255.255.255.255, Culture=neutral, PublicKeyToken=null, ContentType=WindowsRuntime");
-            if (type != null)  // WP8.1 devices
-                adId = (string)type.GetProperty("AdvertisingId").GetValue(null, null);
-            else // WP8.0 devices, requires ID_CAP_IDENTITY_DEVICE
-                adId = Convert.ToBase64String((byte[])DeviceExtendedProperties.GetValue("DeviceUniqueId"));
-
             JObject jsonObject = JObject.FromObject(new
             {
-                device_type = 3,
-                app_id = mAppId,
-                identifier = mChannelUri ?? string.Empty,
-                ad_id = adId,
-                device_model = DeviceStatus.DeviceName,
-                device_os = Environment.OSVersion.Version.ToString(),
-                game_version = XDocument.Load("WMAppManifest.xml").Root.Element("App").Attribute("Version").Value,
-                notification_types = status ? "1" : "-2",
-                language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.ToString(),
-                timezone = TimeZoneInfo.Local.BaseUtcOffset.TotalSeconds.ToString(),
-                sdk = VERSION
+                notification_types = status ? "1" : "-2"
             });
-
-            string urlString = "players/" + mPlayerId;
-
-            var cli = GetWebClient();
-            cli.UploadStringCompleted += (senderObj, eventArgs) => {
+            
+            var webClient = GetWebClient();
+            webClient.UploadStringCompleted += (senderObj, eventArgs) => {
                 subscriptionChangeInProgress = false;
             };
-
-           cli.UploadStringAsync(new Uri(urlString), jsonObject.ToString());
+            
+           webClient.UploadStringAsync(new Uri(BASE_URL + "api/v1/players/" + mPlayerId), "PUT", jsonObject.ToString());
         }
 
         private static void SendSession(string currentChannelUri) {
@@ -421,16 +402,6 @@ namespace OneSignalSDK_WP80 {
             tagsReceivedDelegate = inTagsReceivedDelegate;
 
             SendGetTagsMessage();
-        }
-
-        public static void UnsubscribeFromNotifications()
-        {
-            SetSubscription(false);
-        }
-
-        public static void SubscribeToNotifications()
-        {
-            SetSubscription(true);
         }
 
         private static void SendGetTagsMessage() {

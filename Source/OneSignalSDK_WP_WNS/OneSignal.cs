@@ -85,7 +85,7 @@ namespace OneSignalSDK_WP_WNS
             initDone = true;
         }
 
-        private static Task SetSubscriptionAsync(bool status)
+        public static Task SetSubscriptionAsync(bool status)
         {
             if (mPlayerId == null || mAppId == null || subscriptionChangeInProgress)
             {
@@ -94,25 +94,9 @@ namespace OneSignalSDK_WP_WNS
 
             subscriptionChangeInProgress = true;
 
-            string adId = Windows.System.UserProfile.AdvertisingManager.AdvertisingId;
-
-            var deviceInformation = new EasClientDeviceInformation();
-
-            PackageVersion pv = Package.Current.Id.Version;
-            String appVersion = pv.Major + "." + pv.Minor + "." + pv.Revision + "." + pv.Build;
-
             JObject jsonObject = JObject.FromObject(new
             {
-                device_type = 6,
-                app_id = mAppId,
-                identifier = mChannelUri ?? string.Empty,
-                ad_id = adId,
-                device_model = deviceInformation.SystemProductName,
-                game_version = appVersion,
                 notification_types = status ? "1" : "-2",
-                language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.ToString(),
-                timezone = TimeZoneInfo.Local.BaseUtcOffset.TotalSeconds.ToString(),
-                sdk = VERSION
             });
             string urlString = "players/" + mPlayerId;
 
@@ -460,17 +444,6 @@ namespace OneSignalSDK_WP_WNS
             tagsReceivedDelegate = inTagsReceivedDelegate;
 
             SendGetTagsMessage();
-        }
-
-
-        public static Task UnsubscribeFromNotificationsAsync()
-        {
-            return SetSubscriptionAsync(false);
-        }
-
-        public static Task SubscribeToNotificationsAsync()
-        {
-            return SetSubscriptionAsync(true);
         }
 
         private static void SendGetTagsMessage()
