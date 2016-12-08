@@ -85,31 +85,6 @@ namespace OneSignalSDK_WP_WNS
             initDone = true;
         }
 
-        public static Task SetSubscriptionAsync(bool status)
-        {
-            if (mPlayerId == null || mAppId == null || subscriptionChangeInProgress)
-            {
-                return Task.FromResult(0);
-            }
-
-            subscriptionChangeInProgress = true;
-
-            JObject jsonObject = JObject.FromObject(new
-            {
-                notification_types = status ? "1" : "-2",
-            });
-            string urlString = "players/" + mPlayerId;
-
-            var client = GetHttpClient();
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Put, urlString);
-            request.Content = new StringContent(jsonObject.ToString(), Encoding.UTF8, "application/json");
-
-            return client.SendAsync(request).ContinueWith((responseTask) =>
-            {
-                subscriptionChangeInProgress = false;
-            });
-        }
-
         private static void OneSignal_VisibilityChanged_Window_Current(object sender, VisibilityChangedEventArgs args)
         {
             foreground = args.Visible;
@@ -188,6 +163,34 @@ namespace OneSignalSDK_WP_WNS
             }
         }
 
+        static void OneSignal_VisibilityChanged(CoreWindow sender, VisibilityChangedEventArgs args)
+        {
+            foreground = args.Visible;
+
+            if (foreground)
+                lastPingTime = DateTime.Now.Ticks;
+            else
+            {
+                var time_elapsed = (long)((((DateTime.Now.Ticks) - lastPingTime) / 10000000) + 0.5);
+                lastPingTime = DateTime.Now.Ticks;
+
+                if (time_elapsed < 0 || time_elapsed > 604800)
+                    return;
+
+                var unSentActiveTime = GetSavedActiveTime();
+                var totalTimeActive = unSentActiveTime + time_elapsed;
+
+                if (totalTimeActive < 30)
+                {
+                    settings.Values["OneSignalActiveTime"] = totalTimeActive;
+                    return;
+                }
+
+                SendPing(totalTimeActive);
+                settings.Values["OneSignalActiveTime"] = (long)0;
+            }
+        }
+
         private static long GetSavedActiveTime()
         {
             if (settings.Values.ContainsKey("OneSignalActiveTime"))
@@ -257,8 +260,7 @@ namespace OneSignalSDK_WP_WNS
             HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, urlString);
             request.Content = new StringContent(jsonObject.ToString(), Encoding.UTF8, "application/json");
 
-            client.SendAsync(request).ContinueWith(async (responseTask) =>
-            {
+            client.SendAsync(request).ContinueWith(async (responseTask) => {
                 fallBackOneSignalSession.Dispose();
                 sessionCallInProgress = false;
 
@@ -278,7 +280,6 @@ namespace OneSignalSDK_WP_WNS
                 }
             });
         }
-
 
         private static void NotificationOpened(string message, string jsonParams, bool openedFromNotification)
         {
@@ -322,6 +323,32 @@ namespace OneSignalSDK_WP_WNS
                   .Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
             return client;
+        }
+
+
+        public static Task SetSubscriptionAsync(bool status)
+        {
+            if (mPlayerId == null || mAppId == null || subscriptionChangeInProgress)
+            {
+                return Task.FromResult(0);
+            }
+
+            subscriptionChangeInProgress = true;
+
+            JObject jsonObject = JObject.FromObject(new
+            {
+                notification_types = status ? "1" : "-2",
+            });
+            string urlString = "players/" + mPlayerId;
+
+            var client = GetHttpClient();
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Put, urlString);
+            request.Content = new StringContent(jsonObject.ToString(), Encoding.UTF8, "application/json");
+
+            return client.SendAsync(request).ContinueWith((responseTask) =>
+            {
+                subscriptionChangeInProgress = false;
+            });
         }
 
         public static void SendTag(string key, string value)
@@ -448,8 +475,7 @@ namespace OneSignalSDK_WP_WNS
 
         private static void SendGetTagsMessage()
         {
-            GetHttpClient().GetAsync("players/" + mPlayerId).ContinueWith(async (responseTask) =>
-            {
+            GetHttpClient().GetAsync("players/" + mPlayerId).ContinueWith(async (responseTask) => {
                 if (responseTask.Result.IsSuccessStatusCode)
                 {
                     string content = await responseTask.Result.Content.ReadAsStringAsync();
